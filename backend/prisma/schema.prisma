@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String?
+  createdAt DateTime @default(now())
+
+  oauthAccounts OAuthAccount[]
+  transferJobs  TransferJob[]
+}
+
+model OAuthAccount {
+  id             String   @id @default(uuid())
+  provider       Provider
+  providerUserId String
+
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  scope         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  @@unique([provider, providerUserId])
+}
+
+model TransferJob {
+  id                   String         @id @default(uuid())
+  spotifyPlaylistId    String
+  spotifyPlaylistName  String
+  status               TransferStatus
+  retryCount           Int            @default(0)
+  createdAt            DateTime       @default(now())
+  completedAt          DateTime?
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  items TransferItem[]
+}
+
+model TransferItem {
+  id        String      @id @default(uuid())
+  trackName String
+  artistName String
+  status    TrackStatus
+  youtubeMusicId String?
+
+  createdAt DateTime @default(now())
+
+  transferJob   TransferJob @relation(fields: [transferJobId], references: [id])
+  transferJobId String
+}
+
+enum Provider {
+  spotify
+  google
+}
+
+enum TransferStatus {
+  pending
+  running
+  partial
+  completed
+  failed
+}
+
+enum TrackStatus {
+  found
+  not_found
+}
