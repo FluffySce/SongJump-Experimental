@@ -1,6 +1,6 @@
 import fetch from "node-fetch";
-import { prisma } from "../../libs/prisma";
-import { signToken } from "../../libs/jwt";
+import { prisma } from "../../libs/prisma.js";
+import { signToken } from "../../libs/jwt.js";
 export const handleSpotifyCallback = async ({ code, codeVerifier }) => {
   const body = new URLSearchParams({
     grant_type: "authorization_code",

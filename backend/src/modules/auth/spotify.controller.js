@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { handleSpotifyCallback } from "./spotify.service.js";
 export const oauthStart = (provider) => async (req, res) => {
   const codeVerifier = crypto.randomBytes(32).toString("hex");
   const codeChallenge = crypto
@@ -25,14 +26,14 @@ export const oauthStart = (provider) => async (req, res) => {
       scope: "playlist-read-private playlist-modify-private",
       redirect_uri: process.env.SPOTIFY_REDIRECT_URI,
       state: provider,
-      code_challange_method: "S256",
+      code_challenge_method: "S256",
       code_challenge: codeChallenge,
     });
     authUrl = `https://accounts.spotify.com/authorize?${params.toString()}`;
   }
   // else if provider === "google" do Google logic
   // else if provider === "appleMusic" etc
-
+  console.log(authUrl);
   res.redirect(authUrl);
 };
 

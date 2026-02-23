@@ -1,5 +1,5 @@
-import { verifyToken } from "../libs/jwt";
-import { prisma } from "../libs/prisma";
+import { verifyToken } from "../libs/jwt.js";
+import { prisma } from "../libs/prisma.js";
 
 export const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
