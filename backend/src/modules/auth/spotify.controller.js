@@ -61,5 +61,5 @@ export const oauthCallback = (provider) => async (req, res) => {
     });
   }
   // else if provider === "google" etc
-  res.json({ token });
+  res.json(token);
 };
