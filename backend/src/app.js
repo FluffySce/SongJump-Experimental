@@ -3,6 +3,7 @@ import cors from "cors";
 import routes from "./routes.js";
 import cookieParser from "cookie-parser";
 import authRoutes from "./modules/auth/auth.routes.js";
+import spotifyRouter from "./modules/spotify/spotify.routes.js";
 
 const app = express();
 
@@ -12,13 +13,16 @@ app.use(express.json());
 app.use(cookieParser());
 
 //auth route mounting
+
 app.use("/api/auth", authRoutes);
 app.use("/api", routes);
+
+//spotify routes
+app.use("/api/spotify", spotifyRouter);
 
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
 });
-
 //error handler
 app.use((err, req, res, next) => {
   console.error(err);
