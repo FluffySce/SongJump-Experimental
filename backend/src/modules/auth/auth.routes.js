@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { oauthStart, oauthCallback } from "./spotify.controller.js";
+import { oauthStart, oauthCallback } from "../spotify/spotify.controller.js";
 import { authenticate } from "../../middleware/auth.middleware.js";
 
 const router = Router();
