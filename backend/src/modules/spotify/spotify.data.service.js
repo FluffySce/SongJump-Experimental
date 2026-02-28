@@ -50,7 +50,9 @@ const getValidAccessToken = async (userId) => {
     throw new Error("Spotify account not linked");
   }
 
-  if (new Date() >= account.expiresAt) {
+  // Add 60 second buffer to avoid edge cases
+  const bufferMs = 60 * 1000;
+  if (Date.now() + bufferMs >= account.expiresAt.getTime()) {
     return await refreshAccessToken(account);
   }
 
@@ -58,12 +60,12 @@ const getValidAccessToken = async (userId) => {
 };
 
 export const getUserPlaylists = async (userId) => {
-  const accessToken = await getValidAccessToken(userId);
-
   let url = `${SPOTIFY_API_BASE}/me/playlists?limit=50`;
   const allPlaylists = [];
 
   while (url) {
+    const accessToken = await getValidAccessToken(userId);
+
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -82,12 +84,12 @@ export const getUserPlaylists = async (userId) => {
 };
 
 export const getPlaylistTracks = async (userId, playlistId) => {
-  const accessToken = await getValidAccessToken(userId);
-
   let url = `${SPOTIFY_API_BASE}/playlists/${playlistId}/items?limit=50`;
   const allItems = [];
 
   while (url) {
+    const accessToken = await getValidAccessToken(userId);
+
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
