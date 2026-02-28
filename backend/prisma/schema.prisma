@@ -24,7 +24,7 @@ model OAuthAccount {
   accessToken  String
   refreshToken String
   expiresAt    DateTime
-  scope         String?
+  scope        String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -36,13 +36,23 @@ model OAuthAccount {
 }
 
 model TransferJob {
-  id                   String         @id @default(uuid())
-  spotifyPlaylistId    String
-  spotifyPlaylistName  String
-  status               TransferStatus
-  retryCount           Int            @default(0)
-  createdAt            DateTime       @default(now())
-  completedAt          DateTime?
+  id               String         @id @default(uuid())
+  sourceProvider   Provider       @default(spotify)
+  sourcePlaylistId String
+  sourcePlaylistName String?
+  targetProvider   Provider       @default(google)
+  
+  totalTracks      Int            @default(0)
+  processedTracks  Int            @default(0)
+  successCount     Int            @default(0)
+  failureCount     Int            @default(0)
+  
+  status           TransferStatus @default(PENDING)
+  errorMessage     String?
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  completedAt      DateTime?
 
   user   User   @relation(fields: [userId], references: [id])
   userId String
@@ -51,11 +61,12 @@ model TransferJob {
 }
 
 model TransferItem {
-  id        String      @id @default(uuid())
-  trackName String
-  artistName String
-  status    TrackStatus
+  id             String      @id @default(uuid())
+  trackName      String
+  artistName     String
+  status         TrackStatus @default(PENDING)
   youtubeMusicId String?
+  errorMessage   String?
 
   createdAt DateTime @default(now())
 
@@ -69,14 +80,16 @@ enum Provider {
 }
 
 enum TransferStatus {
-  pending
-  running
-  partial
-  completed
-  failed
+  PENDING
+  PROCESSING
+  COMPLETED
+  PARTIAL
+  FAILED
 }
 
 enum TrackStatus {
-  found
-  not_found
+  PENDING
+  FOUND
+  NOT_FOUND
+  FAILED
 }
