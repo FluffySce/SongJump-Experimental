@@ -4,6 +4,7 @@ import routes from "./routes.js";
 import cookieParser from "cookie-parser";
 import authRoutes from "./modules/auth/auth.routes.js";
 import spotifyRouter from "./modules/spotify/spotify.routes.js";
+import transferRouter from "./modules/transfer/transfer.routes.js";
 
 const app = express();
 
@@ -19,6 +20,9 @@ app.use("/api", routes);
 
 //spotify routes
 app.use("/api/spotify", spotifyRouter);
+
+//transfer routes
+app.use("/api/transfer", transferRouter);
 
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
