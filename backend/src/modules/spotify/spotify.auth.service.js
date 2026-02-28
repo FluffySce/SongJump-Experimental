@@ -10,6 +10,7 @@ export const handleSpotifyCallback = async ({ code, codeVerifier }) => {
     client_id: process.env.SPOTIFY_CLIENT_ID,
     code_verifier: codeVerifier,
   });
+
   const response = await fetch("https://accounts.spotify.com/api/token", {
     method: "POST",
     headers: {
@@ -17,19 +18,24 @@ export const handleSpotifyCallback = async ({ code, codeVerifier }) => {
     },
     body,
   });
+
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Spotify token error");
+
   const { access_token, refresh_token, expires_in } = data;
+
   const profileRes = await fetch("https://api.spotify.com/v1/me", {
     headers: {
       Authorization: `Bearer ${access_token}`,
     },
   });
 
-  //save in DB
+  if (!profileRes.ok) {
+    throw new Error("Failed to fetch Spotify profile");
+  }
+
   const profile = await profileRes.json();
 
-  //save in DB
   let oauthAccount = await prisma.oAuthAccount.findUnique({
     where: {
       provider_providerUserId: {
@@ -45,6 +51,16 @@ export const handleSpotifyCallback = async ({ code, codeVerifier }) => {
   let user;
 
   if (oauthAccount) {
+    // Update tokens for existing user
+    await prisma.oAuthAccount.update({
+      where: { id: oauthAccount.id },
+      data: {
+        accessToken: access_token,
+        refreshToken: refresh_token,
+        expiresAt: new Date(Date.now() + expires_in * 1000),
+        scope: data.scope,
+      },
+    });
     user = oauthAccount.user;
   } else {
     user = await prisma.user.create({
