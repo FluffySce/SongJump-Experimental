@@ -1,4 +1,25 @@
+//transfer.controller.js
 import * as transferService from "./transfer.service.js";
+import { TransferError, ValidationError } from "./transfer.service.js";
+
+/**
+ * Maps errors to HTTP responses without leaking internals.
+ */
+const handleError = (res, error) => {
+  if (error instanceof TransferError) {
+    return res.status(error.statusCode).json({
+      success: false,
+      error: error.message,
+    });
+  }
+
+  console.error("Unexpected error:", error);
+  return res.status(500).json({
+    success: false,
+    error: "Internal server error",
+  });
+};
+
 /**
  * POST /api/transfer
  * Creates a new transfer job.
@@ -7,10 +28,7 @@ export const createJob = async (req, res) => {
   try {
     const { spotifyPlaylistId, targetProvider } = req.body;
     if (!spotifyPlaylistId) {
-      return res.status(400).json({
-        success: false,
-        error: "spotifyPlaylistId is required",
-      });
+      throw new ValidationError("spotifyPlaylistId is required");
     }
     const job = await transferService.createTransferJob({
       userId: req.user.id,
@@ -23,10 +41,7 @@ export const createJob = async (req, res) => {
       status: job.status,
     });
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      error: error.message,
-    });
+    handleError(res, error);
   }
 };
 
@@ -49,10 +64,7 @@ export const listJobs = async (req, res) => {
       jobs,
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    handleError(res, error);
   }
 };
 
@@ -84,17 +96,7 @@ export const getJob = async (req, res) => {
       },
     });
   } catch (error) {
-    const status =
-      error.message === "Job not found"
-        ? 404
-        : error.message === "Unauthorized access to job"
-          ? 403
-          : 500;
-
-    res.status(status).json({
-      success: false,
-      error: error.message,
-    });
+    handleError(res, error);
   }
 };
 
@@ -107,10 +109,7 @@ export const startJob = async (req, res) => {
     const jobId = req.params.jobId;
 
     if (!jobId) {
-      return res.status(400).json({
-        success: false,
-        error: "jobId parameter is required",
-      });
+      throw new ValidationError("jobId parameter is required");
     }
 
     const job = await transferService.startTransferJob(jobId, req.user.id);
@@ -128,20 +127,6 @@ export const startJob = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Start job error:", error);
-
-    const status =
-      error.message === "Job not found"
-        ? 404
-        : error.message === "Unauthorized access to job"
-          ? 403
-          : error.message.includes("Cannot start job")
-            ? 409
-            : 500;
-
-    res.status(status).json({
-      success: false,
-      error: error.message,
-    });
+    handleError(res, error);
   }
 };

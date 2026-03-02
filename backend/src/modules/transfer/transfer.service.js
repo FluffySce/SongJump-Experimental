@@ -1,24 +1,53 @@
+//transfer.service.js
 import { prisma } from "../../libs/prisma.js";
 import * as spotifyDataService from "../spotify/spotify.data.service.js";
 
-/**
- * State Machine Transitions:
- *
- * PENDING -> PROCESSING (on start)
- * PROCESSING -> COMPLETED (all tracks processed)
- * PROCESSING -> PARTIAL (some tracks failed)
- * PROCESSING -> FAILED (critical error during processing)
- *
- * Inavlid transitions -> REJECTED
- */
+// Custom error classes for proper HTTP status mapping
+export class TransferError extends Error {
+  constructor(message, statusCode = 500) {
+    super(message);
+    this.statusCode = statusCode;
+    this.name = "TransferError";
+  }
+}
+
+export class NotFoundError extends TransferError {
+  constructor(message = "Job not found") {
+    super(message, 404);
+    this.name = "NotFoundError";
+  }
+}
+
+export class UnauthorizedError extends TransferError {
+  constructor(message = "Unauthorized access to job") {
+    super(message, 403);
+    this.name = "UnauthorizedError";
+  }
+}
+
+export class ConflictError extends TransferError {
+  constructor(message) {
+    super(message, 409);
+    this.name = "ConflictError";
+  }
+}
+
+export class ValidationError extends TransferError {
+  constructor(message) {
+    super(message, 400);
+    this.name = "ValidationError";
+  }
+}
 
 const VALID_TRANSITIONS = {
   PENDING: ["PROCESSING"],
   PROCESSING: ["COMPLETED", "PARTIAL", "FAILED"],
   COMPLETED: [],
-  PARTIAL: ["PROCESSING"], //allow retry
-  FAILED: ["PROCESSING"], //allow retry
+  PARTIAL: ["PROCESSING"],
+  FAILED: ["PROCESSING"],
 };
+
+const PROGRESS_UPDATE_BATCH_SIZE = 10;
 
 /**
  * creates a new transfer job -> pending state
@@ -30,12 +59,10 @@ export const createTransferJob = async ({
   spotifyPlaylistId,
   targetProvider = "google",
 }) => {
-  //validating target provider
   if (targetProvider !== "google") {
-    throw new Error("only YTmusic (google) is supported for now.");
+    throw new ValidationError("only YTmusic (google) is supported for now.");
   }
 
-  //create job in pending state
   const job = await prisma.transferJob.create({
     data: {
       userId,
@@ -71,10 +98,10 @@ export const getJobById = async (jobId, userId) => {
     },
   });
   if (!job) {
-    throw new Error("Job not found");
+    throw new NotFoundError();
   }
   if (job.userId !== userId) {
-    throw new Error("Unauthorized access to job");
+    throw new UnauthorizedError();
   }
   return job;
 };
@@ -109,11 +136,15 @@ export const getUserJobs = async (userId, { limit = 20, offset = 0 } = {}) => {
  * Validates and performs a state transition.
  * Throws if the transition is invalid.
  */
+/**
+ * Validates and performs a state transition with concurrency protection.
+ * Uses conditional update to prevent race conditions.
+ */
 const transitionState = async (jobId, currentStatus, newStatus) => {
   const allowedTransitions = VALID_TRANSITIONS[currentStatus];
 
   if (!allowedTransitions?.includes(newStatus)) {
-    throw new Error(
+    throw new ConflictError(
       `Invalid state transition: ${currentStatus} → ${newStatus}`,
     );
   }
@@ -124,33 +155,34 @@ const transitionState = async (jobId, currentStatus, newStatus) => {
     updateData.completedAt = new Date();
   }
 
-  return prisma.transferJob.update({
-    where: { id: jobId },
+  // Conditional update: only succeeds if status hasn't changed
+  const result = await prisma.transferJob.updateMany({
+    where: { id: jobId, status: currentStatus },
     data: updateData,
   });
+
+  if (result.count === 0) {
+    throw new ConflictError("Job state changed concurrently. Please retry.");
+  }
+
+  return prisma.transferJob.findUnique({ where: { id: jobId } });
 };
 
 /**
- * Starts processing a transfer job.
- *
- * This is currently SYNCHRONOUS - it blocks until complete.
- * When we add BullMQ, this function will instead enqueue the job
- * and return immediately.
+ * Starts processing a transfer job (synchronous execution).
  */
 export const startTransferJob = async (jobId, userId) => {
-  // Fetch and validate job
   const job = await getJobById(jobId, userId);
 
-  // Validate state transition
   if (
     job.status !== "PENDING" &&
     job.status !== "FAILED" &&
     job.status !== "PARTIAL"
   ) {
-    throw new Error(`Cannot start job in ${job.status} state`);
+    throw new ConflictError(`Cannot start job in ${job.status} state`);
   }
 
-  // Transition to PROCESSING
+  // Transition to PROCESSING with concurrency guard
   await transitionState(job.id, job.status, "PROCESSING");
 
   try {
@@ -180,27 +212,23 @@ export const startTransferJob = async (jobId, userId) => {
       data: { totalTracks: tracks.length },
     });
 
-    // Process each track
+    // Process each track with batched progress updates
     let successCount = 0;
     let failureCount = 0;
+    const transferItems = [];
 
     for (let i = 0; i < tracks.length; i++) {
       const track = tracks[i];
 
       try {
-        // Simulate YouTube Music search/match
-        // In production, this would call youtube.data.service.js
         const matched = await simulateYouTubeMatch(track);
 
-        // Create transfer item record
-        await prisma.transferItem.create({
-          data: {
-            transferJobId: job.id,
-            trackName: track.title,
-            artistName: track.artists.join(", "),
-            status: matched ? "FOUND" : "NOT_FOUND",
-            youtubeMusicId: matched ? `yt_${track.spotifyTrackId}` : null,
-          },
+        transferItems.push({
+          transferJobId: job.id,
+          trackName: track.title,
+          artistName: track.artists.join(", "),
+          status: matched ? "FOUND" : "NOT_FOUND",
+          youtubeMusicId: matched ? `yt_${track.spotifyTrackId}` : null,
         });
 
         if (matched) {
@@ -209,28 +237,35 @@ export const startTransferJob = async (jobId, userId) => {
           failureCount++;
         }
       } catch (trackError) {
-        // Individual track failure shouldn't stop the job
-        await prisma.transferItem.create({
-          data: {
-            transferJobId: job.id,
-            trackName: track.title,
-            artistName: track.artists.join(", "),
-            status: "FAILED",
-            errorMessage: trackError.message,
-          },
+        transferItems.push({
+          transferJobId: job.id,
+          trackName: track.title,
+          artistName: track.artists.join(", "),
+          status: "FAILED",
+          errorMessage: trackError.message,
         });
         failureCount++;
       }
 
-      // Update progress after each track
-      await prisma.transferJob.update({
-        where: { id: job.id },
-        data: {
-          processedTracks: i + 1,
-          successCount,
-          failureCount,
-        },
-      });
+      // Batch update: every N tracks or on last track
+      const isLastTrack = i === tracks.length - 1;
+      const shouldFlush =
+        transferItems.length >= PROGRESS_UPDATE_BATCH_SIZE || isLastTrack;
+
+      if (shouldFlush && transferItems.length > 0) {
+        await prisma.$transaction([
+          prisma.transferItem.createMany({ data: transferItems }),
+          prisma.transferJob.update({
+            where: { id: job.id },
+            data: {
+              processedTracks: i + 1,
+              successCount,
+              failureCount,
+            },
+          }),
+        ]);
+        transferItems.length = 0;
+      }
     }
 
     // Determine final status
@@ -265,19 +300,10 @@ export const startTransferJob = async (jobId, userId) => {
 };
 
 /**
- * Simulates YouTube Music track matching.
- *
- * In production, this would:
- * 1. Search YouTube Music API by ISRC (most accurate)
- * 2. Fall back to search by title + artist
- * 3. Return the best match or null
- *
- * For now, we simulate with 90% success rate.
+ * Placeholder for YouTube Music track matching.
+ * Replace with actual YouTube Music API integration.
  */
 const simulateYouTubeMatch = async (track) => {
-  // Simulate network latency
   await new Promise((resolve) => setTimeout(resolve, 50));
-
-  // 90% success rate simulation
   return Math.random() > 0.1;
 };
