@@ -58,6 +58,10 @@ model TransferJob {
   userId String
 
   items TransferItem[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
 }
 
 model TransferItem {
@@ -72,6 +76,8 @@ model TransferItem {
 
   transferJob   TransferJob @relation(fields: [transferJobId], references: [id])
   transferJobId String
+
+  @@index([transferJobId])
 }
 
 enum Provider {
