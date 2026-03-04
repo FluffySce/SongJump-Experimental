@@ -7,12 +7,16 @@ import {
   listJobs,
   getJob,
   startJob,
+  quickTransfer,
 } from "./transfer.controller.js";
 
 const router = Router();
 
 // All routes require authentication
 router.use(authenticate);
+
+// POST /api/transfer/quick - Single endpoint transfer (create + start)
+router.post("/quick", quickTransfer);
 
 // POST /api/transfer - Create new transfer job
 router.post("/", createJob);

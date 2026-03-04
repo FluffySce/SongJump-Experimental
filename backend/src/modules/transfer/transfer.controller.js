@@ -130,3 +130,44 @@ export const startJob = async (req, res) => {
     handleError(res, error);
   }
 };
+
+/**
+ * POST /api/transfer/quick
+ * Single endpoint: creates job and immediately starts transfer.
+ * Returns results directly without needing separate start call.
+ */
+export const quickTransfer = async (req, res) => {
+  try {
+    const { spotifyPlaylistId } = req.body;
+
+    if (!spotifyPlaylistId) {
+      throw new ValidationError("spotifyPlaylistId is required");
+    }
+
+    // Create and immediately start the transfer
+    const job = await transferService.createTransferJob({
+      userId: req.user.id,
+      spotifyPlaylistId,
+      targetProvider: "google",
+    });
+
+    const result = await transferService.startTransferJob(job.id, req.user.id);
+
+    res.json({
+      success: true,
+      playlistName: result.sourcePlaylistName,
+      totalTracks: result.totalTracks,
+      successCount: result.successCount,
+      failureCount: result.failureCount,
+      status: result.status,
+      tracks: result.items?.map((item) => ({
+        name: item.trackName,
+        artist: item.artistName,
+        status: item.status,
+        youtubeId: item.youtubeMusicId,
+      })),
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+};

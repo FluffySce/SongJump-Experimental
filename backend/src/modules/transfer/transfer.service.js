@@ -1,6 +1,11 @@
 //transfer.service.js
 import { prisma } from "../../libs/prisma.js";
 import * as spotifyDataService from "../spotify/spotify.data.service.js";
+import * as youtubeService from "../youtube/youtube.service.js";
+import { env } from "../../config/env.js";
+
+// Python microservice URL
+const YTMUSIC_SERVICE_URL = env.ytmusicServiceUrl;
 
 // Custom error classes for proper HTTP status mapping
 export class TransferError extends Error {
@@ -170,6 +175,7 @@ const transitionState = async (jobId, currentStatus, newStatus) => {
 
 /**
  * Starts processing a transfer job (synchronous execution).
+ * Calls Python microservice to create playlist and add tracks on YouTube Music.
  */
 export const startTransferJob = async (jobId, userId) => {
   const job = await getJobById(jobId, userId);
@@ -180,6 +186,14 @@ export const startTransferJob = async (jobId, userId) => {
     job.status !== "PARTIAL"
   ) {
     throw new ConflictError(`Cannot start job in ${job.status} state`);
+  }
+
+  // Get YouTube Music auth headers
+  const ytAuthHeaders = await youtubeService.getAuthHeaders(userId);
+  if (!ytAuthHeaders) {
+    throw new ValidationError(
+      "YouTube Music authentication required. Please connect your YouTube Music account first.",
+    );
   }
 
   // Transition to PROCESSING with concurrency guard
@@ -206,69 +220,58 @@ export const startTransferJob = async (jobId, userId) => {
       return getJobById(job.id, userId);
     }
 
-    // Update total tracks count
+    // Fetch playlist info for the name
+    const playlistInfo = await spotifyDataService.getPlaylistInfo(
+      userId,
+      job.sourcePlaylistId,
+    );
+
+    const playlistName =
+      playlistInfo?.name ||
+      `Transferred Playlist ${new Date().toLocaleDateString()}`;
+
+    // Update job with playlist name and total tracks
     await prisma.transferJob.update({
       where: { id: job.id },
-      data: { totalTracks: tracks.length },
+      data: {
+        totalTracks: tracks.length,
+        sourcePlaylistName: playlistName,
+      },
     });
 
-    // Process each track with batched progress updates
-    let successCount = 0;
-    let failureCount = 0;
-    const transferItems = [];
+    // Prepare tracks for Python service
+    const tracksPayload = tracks.map((track) => ({
+      spotifyTrackId: track.spotifyTrackId,
+      title: track.title,
+      artists: track.artists.join(", "),
+      album: track.album || null,
+      isrc: track.isrc || null,
+    }));
 
-    for (let i = 0; i < tracks.length; i++) {
-      const track = tracks[i];
+    // Call Python microservice
+    const transferResult = await callYTMusicService({
+      authHeaders: ytAuthHeaders,
+      playlistName,
+      playlistDescription: `Transferred from Spotify - ${playlistName}`,
+      tracks: tracksPayload,
+    });
 
-      try {
-        const matched = await simulateYouTubeMatch(track);
+    // Map results to TransferItems
+    const transferItems = transferResult.results.map((result) => ({
+      transferJobId: job.id,
+      trackName: result.title,
+      artistName: result.artist,
+      status: result.status, // FOUND, NOT_FOUND, FAILED
+      youtubeMusicId: result.ytVideoId || null,
+      errorMessage: result.error || null,
+    }));
 
-        transferItems.push({
-          transferJobId: job.id,
-          trackName: track.title,
-          artistName: track.artists.join(", "),
-          status: matched ? "FOUND" : "NOT_FOUND",
-          youtubeMusicId: matched ? `yt_${track.spotifyTrackId}` : null,
-        });
-
-        if (matched) {
-          successCount++;
-        } else {
-          failureCount++;
-        }
-      } catch (trackError) {
-        transferItems.push({
-          transferJobId: job.id,
-          trackName: track.title,
-          artistName: track.artists.join(", "),
-          status: "FAILED",
-          errorMessage: trackError.message,
-        });
-        failureCount++;
-      }
-
-      // Batch update: every N tracks or on last track
-      const isLastTrack = i === tracks.length - 1;
-      const shouldFlush =
-        transferItems.length >= PROGRESS_UPDATE_BATCH_SIZE || isLastTrack;
-
-      if (shouldFlush && transferItems.length > 0) {
-        await prisma.$transaction([
-          prisma.transferItem.createMany({ data: transferItems }),
-          prisma.transferJob.update({
-            where: { id: job.id },
-            data: {
-              processedTracks: i + 1,
-              successCount,
-              failureCount,
-            },
-          }),
-        ]);
-        transferItems.length = 0;
-      }
-    }
+    // Store all transfer items
+    await prisma.transferItem.createMany({ data: transferItems });
 
     // Determine final status
+    const successCount = transferResult.successCount;
+    const failureCount = transferResult.failureCount;
     const finalStatus =
       failureCount === 0
         ? "COMPLETED"
@@ -276,10 +279,14 @@ export const startTransferJob = async (jobId, userId) => {
           ? "FAILED"
           : "PARTIAL";
 
+    // Update job with final results
     await prisma.transferJob.update({
       where: { id: job.id },
       data: {
         status: finalStatus,
+        processedTracks: tracks.length,
+        successCount,
+        failureCount,
         completedAt: new Date(),
       },
     });
@@ -300,10 +307,40 @@ export const startTransferJob = async (jobId, userId) => {
 };
 
 /**
- * Placeholder for YouTube Music track matching.
- * Replace with actual YouTube Music API integration.
+ * Call the Python YTMusic microservice to transfer playlist.
  */
-const simulateYouTubeMatch = async (track) => {
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  return Math.random() > 0.1;
+const callYTMusicService = async ({
+  authHeaders,
+  playlistName,
+  playlistDescription,
+  tracks,
+}) => {
+  const response = await fetch(`${YTMUSIC_SERVICE_URL}/transfer`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      authHeaders,
+      playlistName,
+      playlistDescription,
+      tracks,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const errorMessage =
+      errorData.detail || `YTMusic service error: ${response.status}`;
+
+    if (response.status === 401) {
+      throw new UnauthorizedError(
+        "YouTube Music authentication failed. Please re-authenticate.",
+      );
+    }
+
+    throw new TransferError(errorMessage, response.status);
+  }
+
+  return response.json();
 };
