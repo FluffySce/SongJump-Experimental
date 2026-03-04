@@ -106,3 +106,24 @@ export const getPlaylistTracks = async (userId, playlistId) => {
 
   return allItems.map(mapTrack).filter(Boolean);
 };
+
+/**
+ * Get basic playlist information (name, etc.)
+ */
+export const getPlaylistInfo = async (userId, playlistId) => {
+  const accessToken = await getValidAccessToken(userId);
+
+  const response = await fetch(
+    `${SPOTIFY_API_BASE}/playlists/${playlistId}?fields=id,name,description,images,owner,public,collaborative,tracks.total`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch playlist info");
+  }
+
+  const data = await response.json();
+  return mapPlaylist(data);
+};
