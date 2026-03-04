@@ -1,11 +1,63 @@
-# Node junk
+# =========================
+# Node / JS
+# =========================
 node_modules/
 dist/
 coverage/
 *.log
 
-# Env
-.env
+# Build artifacts
+.next/
+build/
+out/
 
-# Prisma generated client
+# =========================
+# Environment files
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Prisma
+# =========================
 **/src/generated/prisma
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.env/
+.venv/
+
+# =========================
+# YTMusic Auth (VERY IMPORTANT)
+# =========================
+browser.json
+headers_auth.json
+
+# =========================
+# OS junk
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# Testing / temp
+# =========================
+.pytest_cache/
+.cache/
+tmp/
+temp/
