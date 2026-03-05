@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model User {
@@ -18,7 +18,7 @@ model User {
 
 model OAuthAccount {
   id             String   @id @default(uuid())
-  provider       Provider
+  provider       String   // "spotify" | "google"
   providerUserId String
 
   accessToken  String
@@ -36,18 +36,18 @@ model OAuthAccount {
 }
 
 model TransferJob {
-  id               String         @id @default(uuid())
-  sourceProvider   Provider       @default(spotify)
+  id               String   @id @default(uuid())
+  sourceProvider   String   @default("spotify")  // "spotify" | "google"
   sourcePlaylistId String
   sourcePlaylistName String?
-  targetProvider   Provider       @default(google)
+  targetProvider   String   @default("google")   // "spotify" | "google"
   
-  totalTracks      Int            @default(0)
-  processedTracks  Int            @default(0)
-  successCount     Int            @default(0)
-  failureCount     Int            @default(0)
+  totalTracks      Int      @default(0)
+  processedTracks  Int      @default(0)
+  successCount     Int      @default(0)
+  failureCount     Int      @default(0)
   
-  status           TransferStatus @default(PENDING)
+  status           String   @default("PENDING")  // PENDING | PROCESSING | COMPLETED | PARTIAL | FAILED
   errorMessage     String?
   
   createdAt        DateTime       @default(now())
@@ -65,10 +65,10 @@ model TransferJob {
 }
 
 model TransferItem {
-  id             String      @id @default(uuid())
+  id             String   @id @default(uuid())
   trackName      String
   artistName     String
-  status         TrackStatus @default(PENDING)
+  status         String   @default("PENDING")  // PENDING | FOUND | NOT_FOUND | FAILED
   youtubeMusicId String?
   errorMessage   String?
 
@@ -80,22 +80,7 @@ model TransferItem {
   @@index([transferJobId])
 }
 
-enum Provider {
-  spotify
-  google
-}
-
-enum TransferStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  PARTIAL
-  FAILED
-}
-
-enum TrackStatus {
-  PENDING
-  FOUND
-  NOT_FOUND
-  FAILED
-}
+// Note: Enum values are stored as strings in SQLite
+// Provider: "spotify" | "google"
+// TransferStatus: "PENDING" | "PROCESSING" | "COMPLETED" | "PARTIAL" | "FAILED"
+// TrackStatus: "PENDING" | "FOUND" | "NOT_FOUND" | "FAILED"
