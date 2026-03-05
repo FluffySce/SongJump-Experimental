@@ -10,9 +10,17 @@ const CONFIG_DIR = path.join(os.homedir(), ".songjump");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 const YOUTUBE_FILE = path.join(CONFIG_DIR, "youtube.json");
 
+interface SpotifyAuth {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
 interface Config {
-  token?: string;
+  token?: string; // JWT token for backend
+  spotify?: SpotifyAuth;
   apiUrl: string;
+  oauthProxyUrl: string;
   user?: {
     id: string;
     email?: string;
@@ -22,6 +30,7 @@ interface Config {
 
 const DEFAULT_CONFIG: Config = {
   apiUrl: "http://127.0.0.1:4000",
+  oauthProxyUrl: "https://oauth-proxy-seven.vercel.app",
 };
 
 function ensureConfigDir(): void {
@@ -91,6 +100,35 @@ export function clearAll(): void {
 
 export function getConfigPath(): string {
   return CONFIG_FILE;
+}
+
+// OAuth Proxy URL
+export function getOAuthProxyUrl(): string {
+  return loadConfig().oauthProxyUrl;
+}
+
+// Spotify token storage
+export function getSpotifyAuth(): SpotifyAuth | undefined {
+  return loadConfig().spotify;
+}
+
+export function setSpotifyAuth(auth: SpotifyAuth): void {
+  const config = loadConfig();
+  config.spotify = auth;
+  saveConfig(config);
+}
+
+export function clearSpotifyAuth(): void {
+  const config = loadConfig();
+  delete config.spotify;
+  saveConfig(config);
+}
+
+export function isSpotifyTokenExpired(): boolean {
+  const auth = getSpotifyAuth();
+  if (!auth) return true;
+  // Add 60 second buffer
+  return Date.now() + 60000 >= auth.expiresAt;
 }
 
 // YouTube headers storage

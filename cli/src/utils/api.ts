@@ -59,6 +59,36 @@ export async function getMe() {
   }
 }
 
+interface SpotifyAuthPayload {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  user: {
+    id: string;
+    email?: string;
+    displayName?: string;
+  };
+}
+
+/**
+ * Register Spotify auth with backend to get JWT token
+ */
+export async function registerSpotifyAuth(auth: SpotifyAuthPayload) {
+  try {
+    const response = await api.post("/api/auth/spotify/register", {
+      accessToken: auth.accessToken,
+      refreshToken: auth.refreshToken,
+      expiresAt: auth.expiresAt,
+      spotifyUserId: auth.user.id,
+      email: auth.user.email,
+      displayName: auth.user.displayName,
+    });
+    return response.data;
+  } catch (error) {
+    handleError(error);
+  }
+}
+
 // Spotify endpoints
 export async function getPlaylists(limit = 20, offset = 0) {
   try {
