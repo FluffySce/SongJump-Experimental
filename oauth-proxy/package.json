@@ -1,0 +1,12 @@
+{
+  "name": "songjump-oauth-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hosted OAuth proxy for SongJump CLI",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "devDependencies": {
+    "vercel": "^37.0.0"
+  }
+}
