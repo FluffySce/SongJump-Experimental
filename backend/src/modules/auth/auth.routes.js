@@ -9,7 +9,7 @@ router.get("/spotify/callback", oauthCallback("spotify"));
 
 // test route
 router.get("/me", authenticate, (req, res) => {
-  res.json({ user: req.user });
+  res.json({ success: true, user: req.user });
 });
 
 //other services etc

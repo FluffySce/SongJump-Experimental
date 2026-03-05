@@ -14,6 +14,9 @@ export const oauthStart = (provider) => async (req, res) => {
       .replace(/\//g, "_")
       .replace(/=+$/, "");
 
+    // Check for CLI callback URL (for CLI login flow)
+    const cliCallback = req.query.cli_callback;
+
     // save codeVerifier in cookie
     const cookieName = `pkce_${provider}_verifier`;
     res.cookie(cookieName, codeVerifier, {
@@ -22,6 +25,16 @@ export const oauthStart = (provider) => async (req, res) => {
       sameSite: "lax",
       maxAge: 5 * 60 * 1000, // 5 minutes
     });
+
+    // Save CLI callback in separate cookie if provided
+    if (cliCallback) {
+      res.cookie(`cli_callback_${provider}`, cliCallback, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 5 * 60 * 1000, // 5 minutes
+      });
+    }
 
     // build auth url
     let authUrl;
@@ -53,7 +66,18 @@ export const oauthStart = (provider) => async (req, res) => {
 export const oauthCallback = (provider) => async (req, res) => {
   try {
     const { code, error } = req.query;
+
+    // Check for CLI callback first
+    const cliCallbackCookie = `cli_callback_${provider}`;
+    const cliCallback = req.cookies[cliCallbackCookie];
+
     if (error) {
+      if (cliCallback) {
+        res.clearCookie(cliCallbackCookie);
+        return res.redirect(
+          `${cliCallback}?error=${encodeURIComponent(error)}`,
+        );
+      }
       return res.status(400).json({ error });
     }
     if (!code) {
@@ -66,6 +90,11 @@ export const oauthCallback = (provider) => async (req, res) => {
     }
     res.clearCookie(cookieName);
 
+    // Clear CLI callback cookie if present
+    if (cliCallback) {
+      res.clearCookie(cliCallbackCookie);
+    }
+
     let token;
     if (provider === "spotify") {
       token = await handleSpotifyCallback({
@@ -76,6 +105,13 @@ export const oauthCallback = (provider) => async (req, res) => {
 
     if (!token) {
       return res.status(400).json({ error: "Unsupported provider" });
+    }
+
+    // If CLI callback is set, redirect with token
+    if (cliCallback) {
+      return res.redirect(
+        `${cliCallback}?token=${encodeURIComponent(token.token)}`,
+      );
     }
 
     res.json(token);
