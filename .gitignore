@@ -22,6 +22,8 @@ out/
 # Prisma
 # =========================
 **/src/generated/prisma
+*.db
+*.db-journal
 
 # =========================
 # Python
