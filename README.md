@@ -1,214 +1,135 @@
 # SongJump
 
-SongJump is a command-line tool that transfers Spotify playlists to YouTube Music.
+Transfer Spotify playlists to YouTube Music from the command line.
 
-It fetches playlists using the Spotify Web API and recreates them on YouTube Music using `ytmusicapi`.
+## Quick Start
 
-The project demonstrates a multi-service architecture using:
+```bash
+# Clone and setup
+git clone https://github.com/<username>/songjump
+cd songjump
 
-- a TypeScript CLI
-- a Node.js API server
-- a Python worker service
+# Start backend (Terminal 1)
+cd backend
+npm install
+npx prisma migrate dev
+npm start
+
+# Start Python worker (Terminal 2)
+cd python-service
+pip install -r requirements.txt
+uvicorn main:app --port 8000
+
+# Install CLI (Terminal 3)
+cd cli
+npm install && npm run build && npm link
+
+# Use it
+songjump login                              # Authenticate with Spotify
+songjump yt-auth                            # Set up YouTube Music
+songjump transfer <spotify-playlist-url>    # Transfer a playlist
+```
+
+**No Spotify developer account required** — authentication is handled by a hosted OAuth service.
+
+**No database setup required** — uses SQLite (auto-created on first run).
 
 ---
 
-## Example
+## Example Output
 
-Run:
+```
+songjump transfer https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
 
-    songjump login
-    songjump yt-auth
-    songjump transfer https://open.spotify.com/playlist/<playlist-id>
+  ✓ Fetched Spotify playlist
+  ✓ Found 50 tracks
+  ✓ Created playlist: Today's Top Hits
+  ✓ Added 48 tracks
 
-Example output:
+  Transfer Complete!
 
-    Fetched Spotify playlist
-    Found 81 tracks
-    Created YouTube Music playlist
+  Playlist:      Today's Top Hits
+  Total tracks:  50
+  Transferred:   48
+  Failed:        2
+  Success rate:  96.0%
+```
 
-    Transfer Complete
-    Transferred: 80
-    Failed: 1
-    Success rate: 98.7%
+---
+
+## Requirements
+
+- Node.js 18+
+- Python 3.8+
+
+That's it. No PostgreSQL, no Spotify API keys, no environment variables.
 
 ---
 
 ## Architecture
 
-SongJump separates responsibilities between a CLI interface, an API layer, and a worker service.
+```
+CLI (TypeScript)
+     │
+     ▼
+Express API (Node.js + SQLite)
+     │
+     ▼
+Python Worker (FastAPI + ytmusicapi)
+     │
+     ▼
+YouTube Music
+```
 
-    CLI (TypeScript)
-         │
-         ▼
-    Express API (Node.js)
-         │
-         ▼
-    Python Worker (FastAPI)
-         │
-         ▼
-    YouTube Music
+| Component     | Purpose                                        |
+| ------------- | ---------------------------------------------- |
+| CLI           | Command interface, credential storage          |
+| Express API   | Playlist fetching, transfer orchestration      |
+| Python Worker | YouTube Music operations via ytmusicapi        |
+| OAuth Proxy   | Hosted service handling Spotify authentication |
 
-### Components
+---
 
-CLI
-- command interface
-- credential storage
-- communication with backend API
+## Commands
 
-Express API
-- Spotify OAuth authentication
-- playlist retrieval
-- transfer orchestration
+| Command                          | Description                         |
+| -------------------------------- | ----------------------------------- |
+| `songjump login`                 | Authenticate with Spotify           |
+| `songjump logout`                | Clear stored credentials            |
+| `songjump yt-auth`               | Set up YouTube Music authentication |
+| `songjump transfer <url>`        | Transfer a Spotify playlist         |
+| `songjump transfer <url> --open` | Transfer and open YouTube Music     |
 
-Python Worker
-- YouTube Music operations
-- playlist creation
-- track matching and insertion
+---
+
+## YouTube Music Authentication
+
+YouTube Music doesn't have a public API. SongJump uses browser session headers with the `ytmusicapi` library.
+
+When you run `songjump yt-auth`, you'll be guided to:
+
+1. Open YouTube Music in your browser
+2. Open DevTools → Network tab
+3. Copy specific headers from a request
+4. Paste them into the CLI
+
+This only needs to be done once. Headers are stored locally for future transfers.
 
 ---
 
 ## Tech Stack
 
-CLI  
-TypeScript, Commander
-
-API Server  
-Node.js, Express
-
-Worker Service  
-Python, FastAPI, ytmusicapi
-
-Authentication  
-Spotify OAuth (PKCE), JWT
-
-Database  
-PostgreSQL
-
-External APIs  
-Spotify Web API  
-YouTube Music
+- **CLI**: TypeScript, Commander
+- **API Server**: Node.js, Express, Prisma
+- **Worker**: Python, FastAPI, ytmusicapi
+- **Database**: SQLite
+- **Auth**: Spotify OAuth (PKCE), JWT
 
 ---
 
-## Features
+## Contributing
 
-- Spotify OAuth authentication
-- CLI-based playlist transfer
-- automated track matching
-- transfer statistics and success metrics
-- credential caching for repeat usage
-- separation between API orchestration and worker logic
-
----
-
-# Running Locally
-
-## Requirements
-
-Install the following:
-
-- Node.js 18+
-- Python 3.8+
-- PostgreSQL
-- Spotify Developer credentials
-
----
-
-## 1. Clone the repository
-
-    git clone https://github.com/<username>/songjump
-    cd songjump
-
----
-
-## 2. Database Setup
-
-Start PostgreSQL and create a database:
-
-    createdb songjump
-
----
-
-## 3. Environment Setup
-
-Copy the example environment file:
-
-    cp backend/.env.example backend/.env
-
-Fill in the required values:
-
-    SPOTIFY_CLIENT_ID=
-    SPOTIFY_CLIENT_SECRET=
-    JWT_SECRET=
-    DATABASE_URL=postgresql://localhost:5432/songjump
-
----
-
-## 4. Run database migrations
-
-    cd backend
-    npx prisma migrate dev
-
----
-
-## 5. Start backend API
-
-    cd backend
-    npm install
-    npm start
-
-The server will run on:
-
-    http://localhost:4000
-
----
-
-## 6. Start Python worker
-
-Open another terminal:
-
-    cd python-service
-    pip install -r requirements.txt
-    uvicorn main:app --reload --port 8000
-
----
-
-## 7. Install CLI
-
-    cd cli
-    npm install
-    npm run build
-    npm link
-
----
-
-## 8. Use the CLI
-
-Authenticate with Spotify:
-
-    songjump login
-
-Authenticate with YouTube Music:
-
-    songjump yt-auth
-
-Transfer a playlist:
-
-    songjump transfer <spotify-playlist-url>
-
-Optional:
-
-    songjump transfer <playlist-url> --open
-
----
-
-## Notes on YouTube Music Authentication
-
-YouTube Music does not provide an official public API.
-
-SongJump uses browser session headers together with the `ytmusicapi` library.
-
-During `songjump yt-auth` you will be guided to extract the required headers from your browser once. These are stored locally for future transfers.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup with local OAuth configuration.
 
 ---
 
