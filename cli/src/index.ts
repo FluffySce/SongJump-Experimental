@@ -7,6 +7,7 @@ import chalk from "chalk";
 
 import { loginCommand } from "./commands/login.js";
 import { ytAuthCommand } from "./commands/ytauth.js";
+import { transferCommand } from "./commands/transfer.js";
 import {
   clearAll,
   isLoggedIn,
@@ -58,7 +59,9 @@ program
   .command("transfer")
   .description("Transfer a Spotify playlist to YouTube Music")
   .argument("<spotify-playlist-url>", "Spotify playlist URL or ID")
-  .option("-o, --open", "Open YouTube Music after transfer");
+  .option("-o, --open", "Open YouTube Music after transfer")
+  .action(transferCommand);
+
 // Parse and execute
 program.parse();
 

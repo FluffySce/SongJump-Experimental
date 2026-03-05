@@ -9,11 +9,25 @@ import ora from "ora";
 import {
   setToken,
   setUser,
+  setSpotifyAuth,
+  getOAuthProxyUrl,
   getApiUrl,
   isLoggedIn,
   getUser,
 } from "../utils/config.js";
-import { getMe } from "../utils/api.js";
+import { registerSpotifyAuth } from "../utils/api.js";
+
+interface SpotifyAuthData {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  expiresAt: number;
+  user: {
+    id: string;
+    email?: string;
+    displayName?: string;
+  };
+}
 
 /**
  * Find an available port
@@ -34,13 +48,13 @@ async function findPort(startPort = 9876): Promise<number> {
 /**
  * Start local server to receive OAuth callback
  */
-async function startCallbackServer(port: number): Promise<string> {
+async function startCallbackServer(port: number): Promise<SpotifyAuthData> {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       const url = new URL(req.url || "/", `http://localhost:${port}`);
 
       if (url.pathname === "/callback") {
-        const token = url.searchParams.get("token");
+        const authParam = url.searchParams.get("auth");
         const error = url.searchParams.get("error");
 
         if (error) {
@@ -51,12 +65,23 @@ async function startCallbackServer(port: number): Promise<string> {
           return;
         }
 
-        if (token) {
-          res.writeHead(200, { "Content-Type": "text/html" });
-          res.end(getSuccessHtml());
-          server.close();
-          resolve(token);
-          return;
+        if (authParam) {
+          try {
+            const authData: SpotifyAuthData = JSON.parse(
+              decodeURIComponent(authParam),
+            );
+            res.writeHead(200, { "Content-Type": "text/html" });
+            res.end(getSuccessHtml());
+            server.close();
+            resolve(authData);
+            return;
+          } catch {
+            res.writeHead(200, { "Content-Type": "text/html" });
+            res.end(getErrorHtml("Failed to parse auth data"));
+            server.close();
+            reject(new Error("Failed to parse auth data"));
+            return;
+          }
         }
       }
 
@@ -163,10 +188,10 @@ export async function loginCommand(): Promise<void> {
   try {
     const port = await findPort();
     const callbackUrl = `http://127.0.0.1:${port}/callback`;
-    const apiUrl = getApiUrl();
+    const oauthProxyUrl = getOAuthProxyUrl();
 
-    // Build OAuth URL with CLI callback
-    const oauthUrl = `${apiUrl}/api/auth/spotify/start?cli_callback=${encodeURIComponent(callbackUrl)}`;
+    // Build OAuth URL with CLI callback (using hosted OAuth proxy)
+    const oauthUrl = `${oauthProxyUrl}/api/spotify/start?cli_callback=${encodeURIComponent(callbackUrl)}`;
 
     spinner.text = "Opening browser for Spotify login...";
 
@@ -178,22 +203,30 @@ export async function loginCommand(): Promise<void> {
 
     spinner.text = "Waiting for login completion...";
 
-    // Wait for token
-    const token = await tokenPromise;
+    // Wait for auth data from OAuth proxy
+    const authData = await tokenPromise;
 
-    spinner.text = "Fetching user info...";
+    spinner.text = "Registering with backend...";
 
-    // Save token
-    setToken(token);
+    // Save Spotify tokens locally
+    setSpotifyAuth({
+      accessToken: authData.accessToken,
+      refreshToken: authData.refreshToken,
+      expiresAt: authData.expiresAt,
+    });
 
-    // Fetch and save user info
+    // Save user info
+    setUser(authData.user);
+
+    // Register with backend and get JWT token
     try {
-      const userResponse = await getMe();
-      if (userResponse?.success) {
-        setUser(userResponse.user);
+      const response = await registerSpotifyAuth(authData);
+      if (response?.token) {
+        setToken(response.token);
       }
     } catch {
-      // Ignore - token is saved
+      // Backend registration failed - but Spotify auth is saved
+      // User can still try transfers later
     }
 
     spinner.succeed(chalk.green("Login successful!"));
@@ -201,7 +234,9 @@ export async function loginCommand(): Promise<void> {
     const user = getUser();
     if (user) {
       console.log(
-        chalk.dim(`  Logged in as: ${chalk.white(user.email || "Unknown")}`),
+        chalk.dim(
+          `  Logged in as: ${chalk.white(user.email || user.displayName || "Unknown")}`,
+        ),
       );
     }
 
