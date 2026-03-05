@@ -2,13 +2,19 @@
 
 SongJump is a command-line tool that transfers Spotify playlists to YouTube Music.
 
-The project demonstrates a multi-service architecture integrating the Spotify Web API with YouTube Music using a Node.js API server, a Python worker service, and a TypeScript CLI client.
+It fetches playlists using the Spotify Web API and recreates them on YouTube Music using `ytmusicapi`.
+
+The project demonstrates a multi-service architecture using:
+
+- a TypeScript CLI
+- a Node.js API server
+- a Python worker service
 
 ---
 
 ## Example
 
-Run the following commands:
+Run:
 
     songjump login
     songjump yt-auth
@@ -45,19 +51,16 @@ SongJump separates responsibilities between a CLI interface, an API layer, and a
 ### Components
 
 CLI
-
 - command interface
 - credential storage
 - communication with backend API
 
 Express API
-
 - Spotify OAuth authentication
 - playlist retrieval
 - transfer orchestration
 
 Python Worker
-
 - YouTube Music operations
 - playlist creation
 - track matching and insertion
@@ -98,13 +101,94 @@ YouTube Music
 
 ---
 
-## Usage
+# Running Locally
+
+## Requirements
+
+Install the following:
+
+- Node.js 18+
+- Python 3.8+
+- PostgreSQL
+- Spotify Developer credentials
+
+---
+
+## 1. Clone the repository
+
+    git clone https://github.com/<username>/songjump
+    cd songjump
+
+---
+
+## 2. Database Setup
+
+Start PostgreSQL and create a database:
+
+    createdb songjump
+
+---
+
+## 3. Environment Setup
+
+Copy the example environment file:
+
+    cp backend/.env.example backend/.env
+
+Fill in the required values:
+
+    SPOTIFY_CLIENT_ID=
+    SPOTIFY_CLIENT_SECRET=
+    JWT_SECRET=
+    DATABASE_URL=postgresql://localhost:5432/songjump
+
+---
+
+## 4. Run database migrations
+
+    cd backend
+    npx prisma migrate dev
+
+---
+
+## 5. Start backend API
+
+    cd backend
+    npm install
+    npm start
+
+The server will run on:
+
+    http://localhost:4000
+
+---
+
+## 6. Start Python worker
+
+Open another terminal:
+
+    cd python-service
+    pip install -r requirements.txt
+    uvicorn main:app --reload --port 8000
+
+---
+
+## 7. Install CLI
+
+    cd cli
+    npm install
+    npm run build
+    npm link
+
+---
+
+## 8. Use the CLI
 
 Authenticate with Spotify:
 
     songjump login
 
-Configure YouTube Music session:
+Authenticate with YouTube Music:
 
     songjump yt-auth
 
@@ -118,76 +202,13 @@ Optional:
 
 ---
 
-## Project Structure
-
-    songjump
-    │
-    ├── cli
-    │   └── TypeScript CLI client
-    │
-    ├── backend
-    │   └── Express API server
-    │       └── modules
-    │           ├── auth
-    │           ├── spotify
-    │           ├── youtube
-    │           └── transfer
-    │
-    ├── python-service
-    │   └── FastAPI worker for YouTube Music
-    │
-    └── README.md
-
----
-
-## Running Locally
-
-Requirements
-
-- Node.js 18+
-- Python 3.8+
-- PostgreSQL
-- Spotify Developer credentials
-
-Clone the repository:
-
-    git clone https://github.com/<username>/songjump
-    cd songjump
-
-Start services.
-
-Backend API:
-
-    cd backend
-    npm start
-
-Python worker:
-
-    cd python-service
-    uvicorn main:app --reload --port 8000
-
-CLI:
-
-    cd cli
-    npm link
-
-Run the CLI:
-
-    songjump login
-    songjump yt-auth
-    songjump transfer <spotify-playlist-url>
-
----
-
 ## Notes on YouTube Music Authentication
 
-YouTube Music does not provide a public API for playlist creation.
+YouTube Music does not provide an official public API.
 
-SongJump uses browser session headers extracted from an authenticated YouTube Music session together with the ytmusicapi library to perform operations.
+SongJump uses browser session headers together with the `ytmusicapi` library.
 
-This authentication step is completed once using:
-
-    songjump yt-auth
+During `songjump yt-auth` you will be guided to extract the required headers from your browser once. These are stored locally for future transfers.
 
 ---
 
