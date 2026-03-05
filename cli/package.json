@@ -1,0 +1,36 @@
+{
+  "name": "songjump",
+  "version": "1.0.0",
+  "description": "Transfer Spotify playlists to YouTube Music from the command line",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "songjump": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js",
+    "link": "npm run build && npm link"
+  },
+  "keywords": [
+    "spotify",
+    "youtube-music",
+    "playlist",
+    "transfer",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.7",
+    "chalk": "^5.3.0",
+    "commander": "^12.0.0",
+    "open": "^10.0.3",
+    "ora": "^8.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "typescript": "^5.3.3"
+  }
+}
