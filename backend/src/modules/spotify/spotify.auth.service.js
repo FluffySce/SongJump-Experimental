@@ -85,3 +85,62 @@ export const handleSpotifyCallback = async ({ code, codeVerifier }) => {
   const token = signToken({ userId: user.id });
   return { token };
 };
+
+/**
+ * Register Spotify auth from CLI (tokens already obtained via OAuth proxy)
+ */
+export const registerSpotifyAuth = async ({
+  accessToken,
+  refreshToken,
+  expiresAt,
+  spotifyUserId,
+  email,
+}) => {
+  let oauthAccount = await prisma.oAuthAccount.findUnique({
+    where: {
+      provider_providerUserId: {
+        provider: "spotify",
+        providerUserId: spotifyUserId,
+      },
+    },
+    include: {
+      user: true,
+    },
+  });
+
+  let user;
+
+  if (oauthAccount) {
+    // Update tokens for existing user
+    await prisma.oAuthAccount.update({
+      where: { id: oauthAccount.id },
+      data: {
+        accessToken,
+        refreshToken,
+        expiresAt: new Date(expiresAt),
+      },
+    });
+    user = oauthAccount.user;
+  } else {
+    // Create new user
+    user = await prisma.user.create({
+      data: {
+        email: email ?? null,
+      },
+    });
+
+    oauthAccount = await prisma.oAuthAccount.create({
+      data: {
+        provider: "spotify",
+        providerUserId: spotifyUserId,
+        accessToken,
+        refreshToken,
+        expiresAt: new Date(expiresAt),
+        userId: user.id,
+      },
+    });
+  }
+
+  const token = signToken({ userId: user.id });
+  return { token, user: { id: user.id, email: user.email } };
+};
